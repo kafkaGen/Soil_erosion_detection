@@ -10,7 +10,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPla
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import Recall, Precision
 from model import build_unet
-from metrics import dice_coef, iou
+from metrics import dice_coef, iou, jacard_coef, jacard_coef_loss
 
 H = 304
 W = 304
@@ -29,15 +29,15 @@ def read_image(path):
     x = cv2.resize(x, (W, H))
     x = x/255.0
     x = x.astype(np.float32)
-    return x                                ## (256, 256, 3)
+    return x                                ## (305, 305, 3)
 
 def read_mask(path):
     path = path.decode()
     x = cv2.imread(path, cv2.IMREAD_GRAYSCALE)  ## (H, W)
     x = cv2.resize(x, (W, H))
     x = x/255.0
-    x = x.astype(np.float32)                    ## (256, 256)
-    x = np.expand_dims(x, axis=-1)              ## (256, 256, 1)
+    x = x.astype(np.float32)                    ## (305, 305)
+    x = np.expand_dims(x, axis=-1)              ## (305, 305, 1)
     return x
 
 def tf_parse(x, y):
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     """ Hyperparameters """
     batch_size = 4
     lr = 1e-4 ## (0.0001)
-    num_epoch = 5
+    num_epoch = 20
     model_path = "files/model.h5"
     csv_path = "files/data.csv"
 
@@ -78,8 +78,7 @@ if __name__ == "__main__":
     target_path = './data/mask'
     n_samples = len(os.listdir(features_path))
 
-    train_num, test_num = train_test_split(np.arange(n_samples), test_size=0.2)
-    train_num, valid_num = train_test_split(train_num, test_size=0.2)
+    train_num, valid_num = train_test_split(np.arange(n_samples), test_size=0.2)
 
     train_x = np.array([f'data/img/{el}.png' for el in train_num])
     train_y = np.array([f'data/mask/{el}.png' for el in train_num])
@@ -87,12 +86,8 @@ if __name__ == "__main__":
     valid_x = np.array([f'data/img/{el}.png' for el in valid_num])
     valid_y = np.array([f'data/mask/{el}.png' for el in valid_num])
 
-    test_x = np.array([f'data/img/{el}.png' for el in test_num])
-    test_y = np.array([f'data/mask/{el}.png' for el in test_num])
-
     print(f"Train: {len(train_x)} - {len(train_y)}")
     print(f"Valid: {len(valid_x)} - {len(valid_y)}")
-    print(f"Test: {len(test_x)} - {len(test_y)}")
 
     train_dataset = tf_dataset(train_x, train_y, batch_size)
     valid_dataset = tf_dataset(valid_x, valid_y, batch_size)
@@ -108,8 +103,8 @@ if __name__ == "__main__":
 
     """ Model """
     model = build_unet((H, W, 3))
-    metrics = [dice_coef, iou, Recall(), Precision()]
-    model.compile(loss="binary_crossentropy", optimizer=Adam(lr), metrics=metrics)
+    metrics = [jacard_coef, iou, Recall(), Precision(), 'accuracy']
+    model.compile(loss=[jacard_coef_loss], optimizer=Adam(lr), metrics=metrics)
     model.summary()
 
     callbacks = [
